@@ -4,6 +4,7 @@ import {json} from "node:stream/consumers";
 import {isEnoent} from "../lib/error.js";
 import {hash, nameHash} from "../lib/hash.js";
 import type {ColumnSchema, QueryParam} from "../runtime/index.js";
+import type {AthenaConfig} from "./athena.js";
 import type {BigQueryConfig} from "./bigquery.js";
 import type {DatabricksConfig} from "./databricks.js";
 import type {DuckDBConfig} from "./duckdb.js";
@@ -12,6 +13,7 @@ import type {SnowflakeConfig} from "./snowflake.js";
 import type {PostgresConfig} from "./postgres.js";
 
 export type DatabaseConfig =
+  | AthenaConfig
   | BigQueryConfig
   | DatabricksConfig
   | DuckDBConfig
@@ -58,6 +60,8 @@ export async function getDatabaseConfig(
 
 export async function getDatabase(config: DatabaseConfig): Promise<QueryTemplateFunction> {
   switch (config.type) {
+    case "athena":
+      return (await import("./athena.js")).default(config);
     case "bigquery":
       return (await import("./bigquery.js")).default(config);
     case "databricks":
