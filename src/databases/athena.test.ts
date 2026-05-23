@@ -158,6 +158,13 @@ describe("Athena DatabaseClient", () => {
     expect(call![0].input).toHaveProperty("ExecutionParameters", ["NUMBER 'NaN'", "NUMBER 'Infinity'", "NUMBER '-Infinity'"]);
   });
 
+  test<TestContext>("sends array parameters as ARRAY literals with recursive conversion", async ({config, send}) => {
+    const queryFn = athena(config);
+    await queryFn`SELECT ${["hello", "world"]}, ${[1, 2, 3]}`;
+    const call = send.mock.calls.find((call) => call[0] instanceof StartQueryExecutionCommand);
+    expect(call![0].input).toHaveProperty("ExecutionParameters", ["ARRAY['hello', 'world']", "ARRAY[1, 2, 3]"]);
+  });
+
   test<TestContext>("sends Date parameters as TIMESTAMP literals in UTC", async ({config, send}) => {
     const queryFn = athena(config);
     await queryFn`SELECT * FROM t WHERE created_at > ${new Date("2024-03-15T10:30:00.123Z")}`;
@@ -167,10 +174,10 @@ describe("Athena DatabaseClient", () => {
 
   test<TestContext>("sends unknown parameter types as quoted string literals", async ({config, send}) => {
     const queryFn = athena(config);
-    await queryFn`SELECT * FROM t WHERE data = ${[1, 2, 3]} AND meta = ${{foo: "bar"}}`;
+    await queryFn`SELECT * FROM t WHERE data = ${{foo: "bar"}} AND other = ${/regex/}`;
     const call = send.mock.calls.find((call) => call[0] instanceof StartQueryExecutionCommand);
-    expect(call![0].input).toHaveProperty("ExecutionParameters", ["'1,2,3'", "'[object Object]'"]);
-  })
+    expect(call![0].input).toHaveProperty("ExecutionParameters", ["'[object Object]'", "'/regex/'"]);
+  });
 
   test<TestContext>("escapes single quotes in string and unknown parameters", async ({config, send}) => {
     const queryFn = athena(config);

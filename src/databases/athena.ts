@@ -132,6 +132,8 @@ function toAthenaLiteral(value: unknown): string {
   } else if (typeof value === "number") {
     if (isNaN(value) || !isFinite(value)) return `NUMBER '${value}'`;
     return String(value);
+  } else if (Array.isArray(value)) {
+    return `ARRAY[${value.map(toAthenaLiteral).join(", ")}]`;
   } else if (value instanceof Date) {
     return `TIMESTAMP '${value.toISOString().replace("T", " ").slice(0, 23)}'`;
   } else {
