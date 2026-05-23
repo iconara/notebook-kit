@@ -201,73 +201,15 @@ type TypeConverter = {
   convert: (value: string, athenaType: string) => boolean | number | string | bigint | object,
 };
 
-const BOOLEAN_CONVERTER: TypeConverter = {
-  type: "boolean",
-  convert(value) {
-    return value === "true";
-  },
-};
-
-const INTEGER_CONVERTER: TypeConverter = {
-  type: "integer",
-  convert(value) {
-    return parseInt(value, 10);
-  },
-};
-
-const BIGINT_CONVERTER: TypeConverter = {
-  type: "bigint",
-  convert(value) {
-    return BigInt(value);
-  },
-};
-
-const NUMBER_CONVERTER: TypeConverter = {
-  type: "number",
-  convert(value) {
-    return parseFloat(value);
-  },
-};
-
-const DATE_CONVERTER: TypeConverter = {
-  type: "date",
-  convert(value) {
-    return new Date(value);
-  }
-};
-
-const TIMESTAMP_CONVERTER: TypeConverter = {
-  type: "date",
-  convert(value, athenaType) {
-    const [date, time, timeZone] = value.split(" ");
-    const isoDateTime = `${date}T${time.slice(0, 12)}`;
-    if (athenaType === "timestamp") {
-      return new Date(isoDateTime);
-    } else if (timeZone === "UTC" || timeZone === "Z") {
-      return new Date(`${isoDateTime}Z`);
-    } else if (/^[+-]\d{2}:\d{2}$/.test(timeZone)) {
-      return new Date(`${isoDateTime}${timeZone}`);
-    } else {
-      const dateInTargetTimezone = new Date(isoDateTime + 'Z');
-      const utcDate = new Date(dateInTargetTimezone.toLocaleString('en-US', {timeZone}));
-      const offset = utcDate.getTime() - dateInTargetTimezone.getTime();
-      const localDate = new Date(isoDateTime);
-      const correctTimestamp = localDate.getTime() - offset;
-      return new Date(correctTimestamp);
-    }
-  }
-};
-
-const BINARY_CONVERTER: TypeConverter = {
-  type: "buffer",
-  convert(value) {
-    return Buffer.from(value.split(" ").map((b) => parseInt(b, 16)));
-  },
-};
-
 const COMPLEX_CONVERTER = {
   convert(value: string): ReturnType<TypeConverter['convert']> {
-    return this.parse(value);
+    if (value.startsWith("[") && value.endsWith("]")) {
+      return this.parseArray(value);
+    } else if (value.startsWith("{") && value.endsWith("}")) {
+      return this.parseStruct(value);
+    } else {
+      return value;
+    }
   },
   split(value: string): string[] {
     const parts: string[] = [];
@@ -294,88 +236,100 @@ const COMPLEX_CONVERTER = {
     }
     return parts;
   },
-  parse(value: string): string | object {
-    if (value.startsWith("[") && value.endsWith("]")) {
-      return this.parseArray(value);
-    } else if (value.startsWith("{") && value.endsWith("}")) {
-      return this.parseStruct(value);
-    } else {
-      return value;
-    }
-  },
-  parseArray(value: string): (string | object)[] {
+  parseArray(value: string) {
     const inner = value.slice(1, -1);
     if (inner === "") return [];
-    return this.split(inner).map(this.parse.bind(this));
+    return this.split(inner).map(this.convert.bind(this));
   },
-  parseStruct(value: string): Record<string, string | object> | (string | object)[] {
+  parseStruct(value: string) {
     const inner = value.slice(1, -1);
     if (inner === "") return {};
     const parts = this.split(inner);
     if (parts.every((p) => !p.includes("=") || p.startsWith("[") || p.startsWith("{"))) {
-      return parts.map(this.parse.bind(this));
+      return parts.map(this.convert.bind(this));
     } else {
       return Object.fromEntries(parts.map((part) => {
         const eqIndex = part.indexOf("=");
         const key = part.slice(0, eqIndex);
         const val = part.slice(eqIndex + 1);
-        return [key, this.parse(val)];
+        return [key, this.convert(val)];
       }));
     }
   },
 };
 
-const ARRAY_CONVERTER: TypeConverter = {
-  type: "array",
-  ...COMPLEX_CONVERTER,
-};
-
-const OBJECT_CONVERTER: TypeConverter = {
-  type: "object",
-  ...COMPLEX_CONVERTER,
-};
-
-const JSON_CONVERTER: TypeConverter = {
-  type: "object",
-  convert(value) {
-    return JSON.parse(value);
+const CONVERTERS: Record<string, TypeConverter> = {
+  "array": {
+    type: "array",
+    ...COMPLEX_CONVERTER,
+  },
+  "bigint": {
+    type: "bigint",
+    convert: BigInt,
+  },
+  "boolean": {
+    type: "boolean",
+    convert: (v) => v === "true",
+  },
+  "date": {
+    type: "date",
+    convert: (v) => new Date(v),
+  },
+  "double": {
+    type: "number",
+    convert: (v) => parseFloat(v),
+  },
+  "integer": {
+    type: "integer",
+    convert: (v) => parseInt(v, 10),
+  },
+  "json": {
+    type: "object",
+    convert: (v) => JSON.parse(v),
+  },
+  "row": {
+    type: "object",
+    ...COMPLEX_CONVERTER,
+  },
+  "timestamp": {
+    type: "date",
+    convert(value, athenaType) {
+      const [date, time, timeZone] = value.split(" ");
+      const isoDateTime = `${date}T${time.slice(0, 12)}`;
+      if (athenaType === "timestamp") {
+        return new Date(isoDateTime);
+      } else if (timeZone === "UTC" || timeZone === "Z") {
+        return new Date(`${isoDateTime}Z`);
+      } else if (/^[+-]\d{2}:\d{2}$/.test(timeZone)) {
+        return new Date(`${isoDateTime}${timeZone}`);
+      } else {
+        const dateInTargetTimezone = new Date(isoDateTime + 'Z');
+        const utcDate = new Date(dateInTargetTimezone.toLocaleString('en-US', {timeZone}));
+        const offset = utcDate.getTime() - dateInTargetTimezone.getTime();
+        const localDate = new Date(isoDateTime);
+        const correctTimestamp = localDate.getTime() - offset;
+        return new Date(correctTimestamp);
+      }
+    }
+  },
+  "varbinary": {
+    type: "buffer",
+    convert: (v) => Buffer.from(v.split(" ").map((b) => parseInt(b, 16))),
+  },
+  "varchar": {
+    type: "string",
+    convert: (v) => v,
   },
 };
 
-const STRING_CONVERTER: TypeConverter = {
-  type: "string",
-  convert(value) {
-    return value;
-  },
-};
+CONVERTERS["char"] = CONVERTERS["string"] = CONVERTERS["varchar"];
+CONVERTERS["tinyint"] = CONVERTERS["smallint"] = CONVERTERS["int"] = CONVERTERS["integer"];
+CONVERTERS["binary"] = CONVERTERS["varbinary"];
+CONVERTERS["decimal"] = CONVERTERS["float"] = CONVERTERS["real"] = CONVERTERS["double"];
+CONVERTERS["timestamp with time zone"] = CONVERTERS["timestamp"];
+CONVERTERS["map"] = CONVERTERS["struct"] = CONVERTERS["row"];
 
 const OTHER_CONVERTER: TypeConverter = {
-  ...STRING_CONVERTER,
+  ...CONVERTERS["varchar"],
   type: "other",
-};
-
-const CONVERTERS: Record<string, TypeConverter> = {
-  "array": ARRAY_CONVERTER,
-  "bigint": BIGINT_CONVERTER,
-  "binary": BINARY_CONVERTER,
-  "boolean": BOOLEAN_CONVERTER,
-  "char": STRING_CONVERTER,
-  "date": DATE_CONVERTER,
-  "decimal": NUMBER_CONVERTER,
-  "double": NUMBER_CONVERTER,
-  "float": NUMBER_CONVERTER,
-  "int": INTEGER_CONVERTER,
-  "integer": INTEGER_CONVERTER,
-  "json": JSON_CONVERTER,
-  "map": OBJECT_CONVERTER,
-  "real": NUMBER_CONVERTER,
-  "row": OBJECT_CONVERTER,
-  "smallint": INTEGER_CONVERTER,
-  "string": STRING_CONVERTER,
-  "struct": OBJECT_CONVERTER,
-  "timestamp with time zone": TIMESTAMP_CONVERTER,
-  "timestamp": TIMESTAMP_CONVERTER,
-  "tinyint": INTEGER_CONVERTER,
-  "varbinary": BINARY_CONVERTER,
-  "varchar": STRING_CONVERTER,
 };
