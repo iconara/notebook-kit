@@ -19,9 +19,13 @@ import type {QueryTemplateFunction, SerializableQueryResult} from "./index.js";
 import type {ColumnSchema} from "../runtime/index.js";
 
 type AthenaIamCredentialsAuth = {
-  authType: "iam-credentials",
+  authType: "iam-credentials";
   accessKeyId: string;
   secretAccessKey: string;
+};
+
+type AthenaDefaultChainCredentialsAuth = {
+  authType: "default-chain";
 };
 
 export type AthenaConfig = {
@@ -30,7 +34,10 @@ export type AthenaConfig = {
   workGroup?: string;
   catalog?: string;
   database?: string;
-} & AthenaIamCredentialsAuth;
+} & (
+    | AthenaIamCredentialsAuth
+    | AthenaDefaultChainCredentialsAuth
+);
 
 export default function athena(config: AthenaConfig): QueryTemplateFunction {
   return async (strings, ...params) => {
@@ -192,8 +199,14 @@ export class AthenaQueryCancelledError extends AthenaError {
   }
 }
 
-function createCredentialsProvider(config: AthenaConfig): AwsCredentialIdentity | AwsCredentialIdentityProvider {
-  return {accessKeyId: config.accessKeyId, secretAccessKey: config.secretAccessKey}
+function createCredentialsProvider(config: AthenaConfig): AwsCredentialIdentity | AwsCredentialIdentityProvider | undefined {
+  if (config.authType === "iam-credentials") {
+    return {accessKeyId: config.accessKeyId, secretAccessKey: config.secretAccessKey};
+  } else if (config.authType == "default-chain") {
+    return undefined;
+  } else {
+    throw new Error(`Unexpected Athena authType: "${(config as Record<string, unknown>).authType}"`);
+  }
 }
 
 type TypeConverter = {
