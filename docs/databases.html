@@ -43,6 +43,7 @@
     * Postgres - [postgres](https://www.npmjs.com/package/postgres)
     * Google BigQuery - [@google-cloud/bigquery](https://www.npmjs.com/package/@google-cloud/bigquery)
     * Databricks - [@databricks/sql](https://www.npmjs.com/package/@databricks/sql)
+    * Amazon Athena - [@aws-sdk/client-athena](https://www.npmjs.com/package/@aws-sdk/client-athena)
 
     The Postgres (PostgreSQL) driver should also work with Postgres-compatible databases such as ClickHouse, Amazon Redshift, and Google Cloud SQL. Our data connectors are [open-source](https://github.com/observablehq/notebook-kit/tree/main/src/databases) and we welcome contributions of additional database drivers! While you can query OLTP databases, we recommend OLAP databases because fast _ad hoc_ queries greatly accelerate analysis.
   </script>
@@ -191,6 +192,12 @@
     ```sh
     npm add @databricks/sql
     ```
+
+    To install the Athena driver:
+
+    ```sh
+    npm add @aws-sdk/client-athena
+    ```
   </script>
   <script id="46" type="text/markdown">
     **What is the format of the `databases.json` file?** This file can configure multiple databases. Each database must have a unique name, the database type, and any corresponding configuration options. Here is how you might configure a `demo` Snowflake database:
@@ -303,5 +310,23 @@
     ```
 
     See the [Databricks SQL Driver for Node.js documentation](https://docs.databricks.com/aws/en/dev-tools/nodejs-sql-driver#authentication) for details.
+  </script>
+  <script id="68" type="text/markdown">
+    **How do I configure Athena?** The following options are supported:
+
+    ```ts
+    type AthenaConfig = {
+      type: "athena";
+      region?: string;
+      workGroup?: string;
+      catalog?: string;
+      database?: string;
+    } & (
+      | {authType: "iam-credentials", accessKeyId: string; secretAccessKey: string}
+      | {authType: "default-chain"}
+    )
+    ```
+
+    The connection can be configured with static credentials, or use [the default AWS SDK credentials loading chain](https://docs.aws.amazon.com/sdkref/latest/guide/standardized-credentials.html#credentialProviderChain).
   </script>
 </notebook>
