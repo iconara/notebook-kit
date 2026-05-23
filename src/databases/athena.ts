@@ -123,12 +123,19 @@ class AthenaClient {
 }
 
 function toAthenaLiteral(value: unknown): string {
-  if (typeof value === "string") {
-    return `'${value}'`;
+  if (value === null || value === undefined) {
+    return "NULL";
+  } else if (typeof value === "string") {
+    return `'${value.replace(/'/g, "''")}'`;
+  } else if (typeof value === "boolean" || typeof value === "bigint") {
+    return String(value);
+  } else if (typeof value === "number") {
+    if (isNaN(value) || !isFinite(value)) return `NUMBER '${value}'`;
+    return String(value);
   } else if (value instanceof Date) {
     return `TIMESTAMP '${value.toISOString().replace("T", " ").slice(0, 23)}'`;
   } else {
-    return String(value);
+    return toAthenaLiteral(String(value));
   }
 }
 
