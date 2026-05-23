@@ -59,6 +59,11 @@ function createResultPages(metadata: ColumnInfo[], pages: string[][][]): GetQuer
   });
 }
 
+function findCommand<T>(send: MockInstance<AthenaClient["send"]>, type: new (...args: any[]) => T): T | undefined {
+  const call = send.mock.calls.find((call) => call[0] instanceof type);
+  return call !== undefined ? call[0] as T : undefined;
+}
+
 describe("Athena DatabaseClient", () => {
   beforeEach<TestContext>((context) => {
     vi.clearAllMocks();
@@ -125,82 +130,82 @@ describe("Athena DatabaseClient", () => {
   test<TestContext>("sends a StartQueryExecutionCommand with the SQL string", async ({config, send}) => {
     const queryFn = athena(config);
     await queryFn`SELECT * FROM my_table`;
-    const call = send.mock.calls.find((call) => call[0] instanceof StartQueryExecutionCommand);
-    expect(call![0].input).toHaveProperty("QueryString", "SELECT * FROM my_table");
+    const command = findCommand(send, StartQueryExecutionCommand);
+    expect(command!.input).toHaveProperty("QueryString", "SELECT * FROM my_table");
   });
 
   test<TestContext>("sends a parameterized query with string parameters", async ({config, send}) => {
     const queryFn = athena(config);
     await queryFn`SELECT * FROM users WHERE name = ${"Alice"} AND city = ${"Paris"}`;
-    const call = send.mock.calls.find((call) => call[0] instanceof StartQueryExecutionCommand);
-    expect(call![0].input).toHaveProperty("QueryString", "SELECT * FROM users WHERE name = ? AND city = ?");
-    expect(call![0].input).toHaveProperty("ExecutionParameters", ["'Alice'", "'Paris'"]);
+    const command = findCommand(send, StartQueryExecutionCommand);
+    expect(command!.input).toHaveProperty("QueryString", "SELECT * FROM users WHERE name = ? AND city = ?");
+    expect(command!.input).toHaveProperty("ExecutionParameters", ["'Alice'", "'Paris'"]);
   });
 
   test<TestContext>("sends boolean and number parameters as unquoted strings", async ({config, send}) => {
     const queryFn = athena(config);
     await queryFn`SELECT * FROM t WHERE active = ${true} AND count > ${42} AND rate = ${3.14} AND big = ${9007199254740993n}`;
-    const call = send.mock.calls.find((call) => call[0] instanceof StartQueryExecutionCommand);
-    expect(call![0].input).toHaveProperty("ExecutionParameters", ["true", "42", "3.14", "9007199254740993"]);
+    const command = findCommand(send, StartQueryExecutionCommand);
+    expect(command!.input).toHaveProperty("ExecutionParameters", ["true", "42", "3.14", "9007199254740993"]);
   });
 
   test<TestContext>("sends null and undefined parameters as NULL", async ({config, send}) => {
     const queryFn = athena(config);
     await queryFn`SELECT * FROM t WHERE a = ${null} AND b = ${undefined}`;
-    const call = send.mock.calls.find((call) => call[0] instanceof StartQueryExecutionCommand);
-    expect(call![0].input).toHaveProperty("ExecutionParameters", ["NULL", "NULL"]);
+    const command = findCommand(send, StartQueryExecutionCommand);
+    expect(command!.input).toHaveProperty("ExecutionParameters", ["NULL", "NULL"]);
   });
 
   test<TestContext>("sends NaN and Infinity as NUMBER literals", async ({config, send}) => {
     const queryFn = athena(config);
     await queryFn`SELECT ${NaN}, ${Infinity}, ${-Infinity}`;
-    const call = send.mock.calls.find((call) => call[0] instanceof StartQueryExecutionCommand);
-    expect(call![0].input).toHaveProperty("ExecutionParameters", ["NUMBER 'NaN'", "NUMBER 'Infinity'", "NUMBER '-Infinity'"]);
+    const command = findCommand(send, StartQueryExecutionCommand);
+    expect(command!.input).toHaveProperty("ExecutionParameters", ["NUMBER 'NaN'", "NUMBER 'Infinity'", "NUMBER '-Infinity'"]);
   });
 
   test<TestContext>("sends array parameters as ARRAY literals with recursive conversion", async ({config, send}) => {
     const queryFn = athena(config);
     await queryFn`SELECT ${["hello", "world"]}, ${[1, 2, 3]}`;
-    const call = send.mock.calls.find((call) => call[0] instanceof StartQueryExecutionCommand);
-    expect(call![0].input).toHaveProperty("ExecutionParameters", ["ARRAY['hello', 'world']", "ARRAY[1, 2, 3]"]);
+    const command = findCommand(send, StartQueryExecutionCommand);
+    expect(command!.input).toHaveProperty("ExecutionParameters", ["ARRAY['hello', 'world']", "ARRAY[1, 2, 3]"]);
   });
 
   test<TestContext>("sends Date parameters as TIMESTAMP literals in UTC", async ({config, send}) => {
     const queryFn = athena(config);
     await queryFn`SELECT * FROM t WHERE created_at > ${new Date("2024-03-15T10:30:00.123Z")}`;
-    const call = send.mock.calls.find((call) => call[0] instanceof StartQueryExecutionCommand);
-    expect(call![0].input).toHaveProperty("ExecutionParameters", ["TIMESTAMP '2024-03-15 10:30:00.123'"]);
+    const command = findCommand(send, StartQueryExecutionCommand);
+    expect(command!.input).toHaveProperty("ExecutionParameters", ["TIMESTAMP '2024-03-15 10:30:00.123'"]);
   });
 
   test<TestContext>("sends unknown parameter types as quoted string literals", async ({config, send}) => {
     const queryFn = athena(config);
     await queryFn`SELECT * FROM t WHERE data = ${{foo: "bar"}} AND other = ${/regex/}`;
-    const call = send.mock.calls.find((call) => call[0] instanceof StartQueryExecutionCommand);
-    expect(call![0].input).toHaveProperty("ExecutionParameters", ["'[object Object]'", "'/regex/'"]);
+    const command = findCommand(send, StartQueryExecutionCommand);
+    expect(command!.input).toHaveProperty("ExecutionParameters", ["'[object Object]'", "'/regex/'"]);
   });
 
   test<TestContext>("escapes single quotes in string and unknown parameters", async ({config, send}) => {
     const queryFn = athena(config);
     const objWithQuote = {toString() { return "it's complex"; }};
     await queryFn`SELECT * FROM t WHERE name = ${"O'Brien"} AND data = ${objWithQuote}`;
-    const call = send.mock.calls.find((call) => call[0] instanceof StartQueryExecutionCommand);
-    expect(call![0].input).toHaveProperty("ExecutionParameters", ["'O''Brien'", "'it''s complex'"]);
+    const command = findCommand(send, StartQueryExecutionCommand);
+    expect(command!.input).toHaveProperty("ExecutionParameters", ["'O''Brien'", "'it''s complex'"]);
   });
 
   test<TestContext>("sends WorkGroup when set in config", async ({config, send}) => {
     config.workGroup = "my-workgroup";
     const queryFn = athena(config);
     await queryFn`SELECT 1`;
-    const call = send.mock.calls.find((call) => call[0] instanceof StartQueryExecutionCommand);
-    expect(call![0].input).toHaveProperty("WorkGroup", "my-workgroup");
+    const command = findCommand(send, StartQueryExecutionCommand);
+    expect(command!.input).toHaveProperty("WorkGroup", "my-workgroup");
   });
 
   test<TestContext>("does not send WorkGroup when not set in config", async ({config, send}) => {
     delete config.workGroup;
     const queryFn = athena(config);
     await queryFn`SELECT 1`;
-    const call = send.mock.calls.find((call) => call[0] instanceof StartQueryExecutionCommand);
-    expect(call![0].input).not.toHaveProperty("WorkGroup");
+    const command = findCommand(send, StartQueryExecutionCommand);
+    expect(command!.input).not.toHaveProperty("WorkGroup");
   });
 
   test<TestContext>("sends QueryExecutionContext with database and catalog when set in config", async ({config, send}) => {
@@ -208,8 +213,8 @@ describe("Athena DatabaseClient", () => {
     config.catalog = "my_catalog";
     const queryFn = athena(config);
     await queryFn`SELECT 1`;
-    const call = send.mock.calls.find((call) => call[0] instanceof StartQueryExecutionCommand);
-    expect(call![0].input).toHaveProperty("QueryExecutionContext", {
+    const command = findCommand(send, StartQueryExecutionCommand);
+    expect(command!.input).toHaveProperty("QueryExecutionContext", {
       Database: "my_database",
       Catalog: "my_catalog",
     });
@@ -218,15 +223,15 @@ describe("Athena DatabaseClient", () => {
   test<TestContext>("does not send QueryExecutionContext when neither database nor catalog is set", async ({config, send}) => {
     const queryFn = athena(config);
     await queryFn`SELECT 1`;
-    const call = send.mock.calls.find((call) => call[0] instanceof StartQueryExecutionCommand);
-    expect(call![0].input).not.toHaveProperty("QueryExecutionContext");
+    const command = findCommand(send, StartQueryExecutionCommand);
+    expect(command!.input).not.toHaveProperty("QueryExecutionContext");
   });
 
   test<TestContext>("calls GetQueryExecution with the returned query execution ID", async ({config, send}) => {
     const queryFn = athena(config);
     await queryFn`SELECT * FROM my_table`;
-    const call = send.mock.calls.find((call) => call[0] instanceof GetQueryExecutionCommand);
-    expect(call![0].input).toHaveProperty("QueryExecutionId", "query-123");
+    const command = findCommand(send, GetQueryExecutionCommand);
+    expect(command!.input).toHaveProperty("QueryExecutionId", "query-123");
   });
 
   test<TestContext>("polls GetQueryExecution until state is SUCCEEDED", async (context) => {
@@ -263,8 +268,8 @@ describe("Athena DatabaseClient", () => {
   test<TestContext>("calls GetQueryResults with the query execution ID after query succeeds", async (context) => {
     const queryFn = athena(context.config);
     await queryFn`SELECT * FROM test_data`;
-    const call = context.send.mock.calls.find((call) => call[0] instanceof GetQueryResultsCommand);
-    expect(call![0].input).toHaveProperty("QueryExecutionId", "query-123");
+    const command = findCommand(context.send, GetQueryResultsCommand);
+    expect(command!.input).toHaveProperty("QueryExecutionId", "query-123");
   });
 
   test<TestContext>("paginates GetQueryResults until NextToken is undefined", async (context) => {
