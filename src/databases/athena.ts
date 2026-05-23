@@ -300,15 +300,13 @@ const CONVERTERS: Record<string, TypeConverter> = {
         return new Date(isoDateTime);
       } else if (timeZone === "UTC" || timeZone === "Z") {
         return new Date(`${isoDateTime}Z`);
-      } else if (/^[+-]\d{2}:\d{2}$/.test(timeZone)) {
-        return new Date(`${isoDateTime}${timeZone}`);
       } else {
-        const dateInTargetTimezone = new Date(isoDateTime + 'Z');
-        const utcDate = new Date(dateInTargetTimezone.toLocaleString('en-US', {timeZone}));
-        const offset = utcDate.getTime() - dateInTargetTimezone.getTime();
-        const localDate = new Date(isoDateTime);
-        const correctTimestamp = localDate.getTime() - offset;
-        return new Date(correctTimestamp);
+        const dateTimeAsUtc = new Date(isoDateTime + "Z");
+        const dateTimeShifted = new Date(dateTimeAsUtc.toLocaleString("en-US", {timeZone}));
+        const offset = dateTimeShifted.getTime() - dateTimeAsUtc.getTime();
+        const localDateTime = new Date(isoDateTime);
+        const adjustedTimestamp = localDateTime.getTime() - offset;
+        return new Date(adjustedTimestamp);
       }
     }
   },
